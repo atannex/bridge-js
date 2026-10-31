@@ -1,0 +1,11 @@
+---
+// A static Astro component; products load in the browser.
+---
+<ul id="products" aria-live="polite"></ul>
+
+<script>
+  import { renderProducts } from './products';
+
+  const list = document.getElementById('products');
+  if (list) void renderProducts(list);
+</script>

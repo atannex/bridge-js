@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['18', '20', '22']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      # The tooling (TypeScript checks, ESLint, export checks) runs once, on current Node.
+      - if: matrix.node == '22'
+        run: npm run typecheck
+      - if: matrix.node == '22'
+        run: npm run test:types
+      - if: matrix.node == '22'
+        run: npm run lint
+      - if: matrix.node == '22'
+        run: npm run format:check
+      - if: matrix.node == '22'
+        run: npm run check:exports
+
+  # The built package in other runtimes. The checks (tests/smoke/smoke.mjs)
+  # use an in-memory fetch, so no server is involved.
+  runtimes:
+    name: ${{ matrix.runtime }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [bun, deno, chromium]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - if: matrix.runtime == 'bun'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.1.38
+      - if: matrix.runtime == 'bun'
+        run: bun tests/smoke/run.mjs
+      - if: matrix.runtime == 'deno'
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: 2.1.4
+      - if: matrix.runtime == 'deno'
+        run: deno run --allow-read tests/smoke/run.mjs
+      - if: matrix.runtime == 'chromium'
+        run: |
+          npm install --no-save playwright@1.49.1
+          npx playwright install --with-deps chromium
+          node tests/smoke/browser.mjs
+
+  # Against a real Laravel backend: the example app in atannex/bridge-workspace
+  # with atannex/bridge, checked out side by side as they sit locally. Runs
+  # the SDK integration tests, the generated-contract check and the Expo flow.
+  # Manual only until atannex/bridge-workspace is on GitHub; locally, run
+  # bridge-workspace/scripts/integration.sh.
+  integration:
+    name: Laravel integration
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: bridge-js
+      - uses: actions/checkout@v4
+        with:
+          repository: atannex/bridge
+          path: bridge
+      - uses: actions/checkout@v4
+        with:
+          repository: atannex/bridge-workspace
+          path: bridge-workspace
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_sqlite, sqlite3, mbstring, bcmath, fileinfo, gd
+          coverage: none
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install
+        run: |
+          (cd bridge-js && npm ci && npm run build && mkdir -p ../bridge-workspace/vendor-packs && npm pack --pack-destination ../bridge-workspace/vendor-packs)
+          (cd bridge-workspace/laravel-app && composer install --no-interaction --no-progress && cp .env.example .env && php artisan key:generate)
+          (cd bridge-workspace/expo-app && npm ci)
+      - name: Integration
+        run: bridge-workspace/scripts/integration.sh

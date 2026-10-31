@@ -1,0 +1,101 @@
+{
+  "name": "@atannex/bridge",
+  "version": "1.0.0",
+  "description": "Typed TypeScript client for Atannex Bridge: call Laravel operations from browsers, React Native, Expo and Node with one protocol.",
+  "keywords": [
+    "laravel",
+    "bridge",
+    "rpc",
+    "typescript",
+    "react-native",
+    "expo",
+    "sanctum",
+    "api-client"
+  ],
+  "license": "MIT",
+  "author": "Atanga Leke Collins <atangageihlekecollins@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/atannex/bridge-js.git"
+  },
+  "homepage": "https://github.com/atannex/bridge-js#readme",
+  "bugs": {
+    "url": "https://github.com/atannex/bridge-js/issues"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "react-native": "./dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "react-native": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./xhr": {
+      "types": "./dist/xhr/index.d.ts",
+      "react-native": "./dist/xhr/index.js",
+      "default": "./dist/xhr/index.js"
+    },
+    "./query": {
+      "types": "./dist/query/index.d.ts",
+      "react-native": "./dist/query/index.js",
+      "default": "./dist/query/index.js"
+    },
+    "./realtime": {
+      "types": "./dist/realtime/index.d.ts",
+      "react-native": "./dist/realtime/index.js",
+      "default": "./dist/realtime/index.js"
+    },
+    "./expo": {
+      "types": "./dist/expo/index.d.ts",
+      "react-native": "./dist/expo/index.js",
+      "default": "./dist/expo/index.js"
+    },
+    "./react-native": {
+      "types": "./dist/react-native/index.d.ts",
+      "react-native": "./dist/react-native/index.js",
+      "default": "./dist/react-native/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p examples/tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --project unit",
+    "test:types": "vitest run --project types --typecheck.only",
+    "test:integration": "npm run build && vitest run --project integration --no-file-parallelism",
+    "test:smoke": "node tests/smoke/run.mjs",
+    "check:exports": "npm run build && publint --strict && attw --pack . --profile esm-only",
+    "prepublishOnly": "npm run typecheck && npm run lint && npm test && npm run test:types && npm run check:exports",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
+    "@eslint/js": "^9.39.5",
+    "@tanstack/react-query": "^5.105.0",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "eslint": "^9.39.5",
+    "laravel-echo": "^2.6.3",
+    "prettier": "^3.9.10",
+    "publint": "^0.3.25",
+    "pusher-js": "^8.6.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^3.2.7",
+    "vue": "^3.5.44"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "types": [],
+    "paths": {
+      "@atannex/bridge": ["../src/index.ts"],
+      "@atannex/bridge/query": ["../src/query/index.ts"],
+      "@atannex/bridge/xhr": ["../src/xhr/index.ts"],
+      "@atannex/bridge/realtime": ["../src/realtime/index.ts"],
+      "@atannex/bridge/expo": ["../src/expo/index.ts"],
+      "@atannex/bridge/react-native": ["../src/react-native/index.ts"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx"]
+}
