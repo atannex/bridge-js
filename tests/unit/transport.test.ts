@@ -1,3 +1,4 @@
+import { File as NodeFile } from 'node:buffer';
 import { describe, expect, it } from 'vitest';
 import { BridgeAbortError, BridgeNetworkError, BridgeTimeoutError, createBridge, isBridgeFile } from '@atannex/bridge';
 import { parseResponseHeaders, xhrTransport } from '@atannex/bridge/xhr';
@@ -95,7 +96,8 @@ describe('multipart encoding', () => {
       ok({ size: 3, mime: 'image/png', download: { url: 'u', name: 'n', expires_at: 'e' } }),
     );
     const bridge = createBridge<AppBridge>({ baseURL: 'https://api.test', fetch });
-    const avatar = new File([new Uint8Array([1, 2, 3])], 'me.png', { type: 'image/png' });
+    // Node 18 has no global File; node:buffer's is the same class on newer Node.
+    const avatar = new NodeFile([new Uint8Array([1, 2, 3])], 'me.png', { type: 'image/png' }) as unknown as File;
     await bridge.call('profile.avatar.upload', { avatar });
 
     const request = requests[0]!;

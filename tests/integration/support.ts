@@ -1,3 +1,4 @@
+import { webcrypto } from 'node:crypto';
 import { describe } from 'vitest';
 import {
   bearerToken,
@@ -60,10 +61,10 @@ export async function totp(secret: string, step = 0, now = Date.now()): Promise<
   const counter = Math.floor(now / 1000 / 30) + step;
   const message = new Uint8Array(8);
   new DataView(message.buffer).setBigUint64(0, BigInt(counter));
-  const key = await crypto.subtle.importKey('raw', base32Decode(secret), { name: 'HMAC', hash: 'SHA-1' }, false, [
+  const key = await webcrypto.subtle.importKey('raw', base32Decode(secret), { name: 'HMAC', hash: 'SHA-1' }, false, [
     'sign',
   ]);
-  const hmac = new Uint8Array(await crypto.subtle.sign('HMAC', key, message));
+  const hmac = new Uint8Array(await webcrypto.subtle.sign('HMAC', key, message));
   const offset = hmac[hmac.length - 1]! & 0x0f;
   const code =
     ((hmac[offset]! & 0x7f) << 24) | (hmac[offset + 1]! << 16) | (hmac[offset + 2]! << 8) | hmac[offset + 3]!;
