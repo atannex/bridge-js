@@ -270,13 +270,18 @@ export function bearerToken<User = Record<string, unknown>>(options: BearerToken
 
     async user() {
       const current = requireHost();
-      if ((await token()) === null) return null;
+      const used = await token();
+      if (used === null) return null;
       try {
         const response = await current.send({ method: 'GET', path: options.userPath ?? current.prefixed('auth/user') });
         return (response.body as { data?: User } | undefined)?.data ?? null;
       } catch (error) {
         if (error instanceof BridgeAuthenticationError && error.status === 401) {
-          await forget();
+          // Same rule as onUnauthenticated: a token stored meanwhile stays.
+          if (cached === used) {
+            await forget();
+            options.onSessionExpired?.();
+          }
           return null;
         }
         throw error;

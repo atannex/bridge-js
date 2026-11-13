@@ -18,6 +18,7 @@
  */
 import type { Bridge, CallOptions } from '../client/create-bridge.js';
 import type { Contract, HasOptionalInput, InputOf, OperationName, OutputOf, Paginated } from '../contracts/types.js';
+import { eitherSignal } from '../utilities/signal.js';
 
 /** Every Bridge query key starts with this, so `invalidate(queryClient)` can reach them all. */
 export const QUERY_KEY_ROOT = 'bridge';
@@ -39,6 +40,22 @@ export type QueryArgs<C extends Contract, K extends OperationName<C>> =
 
 type LooseCall = (operation: string, input?: unknown, options?: CallOptions) => Promise<unknown>;
 const callOf = <C extends Contract>(bridge: Bridge<C>): LooseCall => bridge.call as unknown as LooseCall;
+
+/** Calls with TanStack's signal, without dropping a `signal` the caller passed in the options. */
+async function callWithSignal(
+  call: LooseCall,
+  operation: string,
+  input: unknown,
+  options: CallOptions,
+  signal: AbortSignal,
+): Promise<unknown> {
+  const linked = eitherSignal(signal, options.signal);
+  try {
+    return await call(operation, input, { ...options, signal: linked.signal });
+  } finally {
+    linked.dispose();
+  }
+}
 
 /**
  * Works out the key scope and the call options to use with it. When the scope
@@ -84,7 +101,7 @@ export function queryOptions<C extends Contract, K extends OperationName<C>>(
   const { scope, callOptions } = scoped(bridge, options);
   return {
     queryKey: queryKey(operation, input, scope),
-    queryFn: ({ signal }) => callOf(bridge)(operation, input, { ...callOptions, signal }),
+    queryFn: ({ signal }) => callWithSignal(callOf(bridge), operation, input, callOptions, signal),
   };
 }
 
@@ -162,8 +179,19 @@ export function getPreviousPageParam(firstPage: Paginated<unknown>): number | st
 type PageOutput<C extends Contract, K extends OperationName<C>> =
   OutputOf<C, K> extends Paginated<unknown> ? OutputOf<C, K> : never;
 
+/**
+ * `['bridge', scope, operation, input, 'infinite']`. The extra element keeps an
+ * infinite query from sharing a cache entry with a plain query of the same
+ * input: TanStack stores `{ pages, pageParams }` for one and the output for
+ * the other. Prefix filters such as `invalidate` still reach both.
+ */
+export type BridgeInfiniteQueryKey<K extends string = string, I = unknown> = readonly [
+  ...BridgeQueryKey<K, I>,
+  'infinite',
+];
+
 export interface BridgeInfiniteQueryOptions<K extends string, I, O> {
-  queryKey: BridgeQueryKey<K, I | Record<string, never>>;
+  queryKey: BridgeInfiniteQueryKey<K, I | Record<string, never>>;
   initialPageParam: number | string | null;
   queryFn: (context: { signal: AbortSignal; pageParam: unknown }) => Promise<O>;
   getNextPageParam: (lastPage: O) => number | string | undefined;
@@ -184,12 +212,12 @@ export function infiniteQueryOptions<C extends Contract, K extends OperationName
   const { param = 'page', ...rest } = options;
   const { scope, callOptions } = scoped(bridge, rest);
   return {
-    queryKey: queryKey(operation, input, scope),
+    queryKey: [...queryKey(operation, input, scope), 'infinite'] as const,
     initialPageParam: param === 'page' ? 1 : null,
     queryFn: ({ signal, pageParam }) => {
       const pageInput: Record<string, unknown> = { ...(input as Record<string, unknown> | undefined) };
       if (pageParam !== null && pageParam !== undefined) pageInput[param] = pageParam;
-      return callOf(bridge)(operation, pageInput, { ...callOptions, signal }) as Promise<PageOutput<C, K>>;
+      return callWithSignal(callOf(bridge), operation, pageInput, callOptions, signal) as Promise<PageOutput<C, K>>;
     },
     getNextPageParam: (lastPage) => getNextPageParam(lastPage),
     getPreviousPageParam: (firstPage) => getPreviousPageParam(firstPage),

@@ -3,5 +3,3 @@ dist/
 coverage/
 *.tgz
 
-# Documentation is kept locally, not on GitHub.
-/docs

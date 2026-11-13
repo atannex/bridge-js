@@ -1,0 +1,33 @@
+name: Bug report
+description: Something in @atannex/bridge does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Security problems go through SECURITY.md, not here.
+  - type: input
+    id: version
+    attributes:
+      label: Package version
+      placeholder: 1.0.1
+    validations:
+      required: true
+  - type: input
+    id: runtime
+    attributes:
+      label: Runtime
+      placeholder: Chrome 131 / React Native 0.76 / Node 22.12
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: Code, and the request and response if relevant. Remove tokens and cookies.
+      render: ts

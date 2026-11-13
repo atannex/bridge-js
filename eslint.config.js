@@ -8,6 +8,7 @@ export default tseslint.config(
       'node_modules/',
       'docs/',
       'coverage/',
+      'api/',
       'examples/astro/**/*.astro',
       'tests/integration/contract.generated.ts',
       // Plain JavaScript run unchanged by Node, Bun, Deno and a browser; not type-checked.
@@ -19,7 +20,7 @@ export default tseslint.config(
   {
     languageOptions: {
       parserOptions: {
-        projectService: { allowDefaultProject: ['eslint.config.js'] },
+        projectService: { allowDefaultProject: ['eslint.config.js', 'scripts/*.mjs'] },
         tsconfigRootDir: import.meta.dirname,
       },
     },
@@ -57,6 +58,11 @@ export default tseslint.config(
       '@typescript-eslint/unbound-method': 'off',
       '@typescript-eslint/no-empty-function': 'off',
     },
+  },
+  {
+    // Maintenance scripts run on Node only.
+    files: ['scripts/**/*.mjs'],
+    languageOptions: { globals: { process: 'readonly', console: 'readonly' } },
   },
   { files: ['eslint.config.js'], ...tseslint.configs.disableTypeChecked },
 );
