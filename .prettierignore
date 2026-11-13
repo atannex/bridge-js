@@ -3,3 +3,4 @@ node_modules
 docs
 coverage
 tests/integration/contract.generated.ts
+api

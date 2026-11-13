@@ -12,6 +12,13 @@ const alias = [
 export default defineConfig({
   resolve: { alias },
   test: {
+    // `npm run test:coverage` fails below these, so coverage cannot quietly drop.
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.ts'],
+      reporter: ['text-summary', 'lcov'],
+      thresholds: { statements: 95, lines: 95, functions: 95, branches: 90 },
+    },
     projects: [
       {
         extends: true,
