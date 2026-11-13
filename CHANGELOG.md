@@ -3,7 +3,7 @@
 All notable changes to `@atannex/bridge` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 1.1.0 — 2026-11-13
 
 ### Added
 
