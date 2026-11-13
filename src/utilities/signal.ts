@@ -8,6 +8,8 @@
 export interface LinkedSignal {
   signal: AbortSignal;
   timedOut(): boolean;
+  /** Aborts the linked signal itself, for example to release a response body nobody will read. */
+  abort(reason?: unknown): void;
   dispose(): void;
 }
 
@@ -33,6 +35,7 @@ export function linkSignal(parent: AbortSignal | undefined, timeout: number | un
   return {
     signal: controller.signal,
     timedOut: () => timedOut,
+    abort: (reason) => controller.abort(reason),
     dispose: () => {
       if (timer !== undefined) clearTimeout(timer);
       parent?.removeEventListener('abort', onAbort);
@@ -57,4 +60,23 @@ export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
     }, ms);
     signal?.addEventListener('abort', onAbort, { once: true });
   });
+}
+
+/**
+ * One signal that aborts when either input does. `dispose` detaches the
+ * listeners once the work is done.
+ */
+export function eitherSignal(first: AbortSignal, second: AbortSignal | undefined): LinkedSignal {
+  const linked = linkSignal(first, undefined);
+  if (second === undefined) return linked;
+  const onAbort = (): void => linked.abort(second.reason);
+  if (second.aborted) linked.abort(second.reason);
+  else second.addEventListener('abort', onAbort, { once: true });
+  return {
+    ...linked,
+    dispose: () => {
+      linked.dispose();
+      second.removeEventListener('abort', onAbort);
+    },
+  };
 }

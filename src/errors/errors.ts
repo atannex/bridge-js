@@ -136,6 +136,10 @@ export class BridgeServerError extends BridgeError {
     super(init);
     this.retryAfter = init.retryAfter;
   }
+
+  override toJSON(): Record<string, unknown> {
+    return { ...super.toJSON(), retryAfter: this.retryAfter };
+  }
 }
 
 /** A response that does not follow the Bridge protocol (wrong shape, not JSON on success, ...). */

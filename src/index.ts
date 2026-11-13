@@ -4,7 +4,14 @@
  * @packageDocumentation
  */
 export { createBridge } from './client/create-bridge.js';
-export type { Bridge, BridgeConfig, CallArgs, CallOptions, DownloadOptions } from './client/create-bridge.js';
+export type {
+  AttemptEvent,
+  Bridge,
+  BridgeConfig,
+  CallArgs,
+  CallOptions,
+  DownloadOptions,
+} from './client/create-bridge.js';
 export { DEFAULT_RETRY, mayRepeat } from './client/retry.js';
 export type { ResolvedRetryPolicy, RetryPolicy } from './client/retry.js';
 

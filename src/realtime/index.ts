@@ -208,6 +208,9 @@ export function createRealtime<C extends Contract = UntypedContract>(echo: EchoL
       // Entries are updated in place: live Subscription objects hold them.
       for (const entry of channels.values()) {
         if (entry.type === 'public') continue;
+        // When close() cannot leave (another variant shares the name), open()
+        // hands back the same Echo channel; listening again would double up.
+        for (const listener of entry.listeners) entry.channel.stopListening(listener.event, listener.handler);
         close(entry);
         entry.channel = open(entry.type, entry.name);
         attachPresence(entry);
@@ -275,6 +278,7 @@ export function echoAuthorizer(auth: AuthAdapter, options: EchoAuthorizerOptions
         const response = await doFetch(request.url, init);
         const finalOrigin = response.url === '' ? undefined : originOf(response.url);
         if (response.redirected || (finalOrigin !== undefined && finalOrigin !== originOf(request.url))) {
+          await response.body?.cancel().catch(() => undefined);
           callback(new Error('Channel authorization was redirected; refusing it.'), null);
           return;
         }

@@ -87,12 +87,37 @@ export interface BridgeConfig {
   /** Called once per operation per client the first time the server reports it deprecated. */
   onDeprecated?: (operation: string, message: string) => void;
   /**
+   * Called after every attempt of an operation call, with its timing and
+   * outcome, for metrics and tracing. Exceptions it throws are ignored, so
+   * observability can never break a call.
+   */
+  onAttempt?: (event: AttemptEvent) => void;
+  /**
    * Largest JSON response body to accept, in bytes. Bigger responses fail
    * with a `BridgeProtocolError` (`RESPONSE_TOO_LARGE`): at once when
    * `Content-Length` says so, otherwise after reading. No limit by default.
    * Does not apply to `download`.
    */
   maxResponseBytes?: number;
+}
+
+/** One finished attempt of an operation call. See `BridgeConfig.onAttempt`. */
+export interface AttemptEvent {
+  operation: string;
+  /** 1 for the first attempt, 2 for the first retry, ... */
+  attempt: number;
+  /** This attempt's `X-Request-Id`. */
+  requestId: string | undefined;
+  /** Shared by every attempt of one call. */
+  correlationId: string;
+  /** Milliseconds from sending the request to its outcome. */
+  durationMs: number;
+  /** The HTTP status, when a response arrived. */
+  status: number | undefined;
+  /** What the attempt failed with; undefined when it succeeded. */
+  error: BridgeError | undefined;
+  /** The wait before the next attempt, when the call will try again; undefined when this was the last. */
+  retryInMs: number | undefined;
 }
 
 export interface CallOptions {
@@ -371,7 +396,11 @@ export function createBridge<C extends Contract = UntypedContract>(config: Bridg
       if (limit !== undefined && byteLength(text) > limit) throw tooLargeError(errorContext, response.status, limit);
       return { status: response.status, headers: response.headers, body: parseJson(text), request: prepared };
     } catch (cause) {
-      throw failureError(cause, options.signal, linked, errorContext);
+      const error = failureError(cause, options.signal, linked, errorContext);
+      // A response refused before its body was read (redirect, too large, a
+      // throwing handleResponse) would otherwise hold its connection open.
+      linked.abort();
+      throw error;
     } finally {
       linked.dispose();
     }
@@ -442,6 +471,23 @@ export function createBridge<C extends Contract = UntypedContract>(config: Bridg
         onUploadProgress: options.onUploadProgress,
       };
 
+      const startedAt = Date.now();
+      const report = (outcome: Pick<AttemptEvent, 'status' | 'error' | 'retryInMs'>): void => {
+        if (config.onAttempt === undefined) return;
+        try {
+          config.onAttempt({
+            operation,
+            attempt,
+            requestId: headers['x-request-id'],
+            correlationId,
+            durationMs: Date.now() - startedAt,
+            ...outcome,
+          });
+        } catch {
+          // Observers must not change the outcome of a call.
+        }
+      };
+
       let error: BridgeError;
       try {
         const result = await exchange(request, context, {
@@ -456,12 +502,16 @@ export function createBridge<C extends Contract = UntypedContract>(config: Bridg
             response = (await interceptor(response, context)) ?? response;
           }
           noteDeprecation(operation, response);
+          report({ status: result.status, error: undefined, retryInMs: undefined });
           return response;
         }
         error = errorFromResponse(result.status, result.body, { operation, headers: result.headers });
         if (result.status === 419 && !csrfReplayed && auth?.recover !== undefined) {
           csrfReplayed = true;
-          if (await auth.recover(error, result.request)) continue;
+          if (await auth.recover(error, result.request)) {
+            report({ status: result.status, error, retryInMs: 0 });
+            continue;
+          }
         }
         if (result.status === 401 && auth?.onUnauthenticated !== undefined) {
           await auth.onUnauthenticated(error, result.request);
@@ -472,6 +522,7 @@ export function createBridge<C extends Contract = UntypedContract>(config: Bridg
       }
 
       const delay = error instanceof BridgeAbortError ? undefined : retryDelay(error, attempt, policy);
+      report({ status: error.status, error, retryInMs: delay });
       if (delay === undefined) {
         throw await finalError(error, context);
       }
@@ -506,7 +557,7 @@ export function createBridge<C extends Contract = UntypedContract>(config: Bridg
     prefixed: (path) => `/${prefix}/${path.replace(/^\/+/, '')}`,
     async send(hostRequest: HostRequest): Promise<HostResponse> {
       const target = joinUrl(baseURL, hostRequest.path);
-      if (originOf(target) !== originOf(baseURL) && originOf(baseURL) !== undefined) {
+      if (originOf(target) !== originOf(baseURL)) {
         throw new TypeError('Auth requests must go to the same origin as the Bridge baseURL.');
       }
       const headers: Record<string, string> = { ...(await baseHeaders()), 'x-request-id': randomId() };
@@ -549,13 +600,22 @@ export function createBridge<C extends Contract = UntypedContract>(config: Bridg
       );
     }
     const doFetch = config.fetch ?? globalThis.fetch;
-    const request: TransportRequest = {
+    if (typeof doFetch !== 'function') {
+      throw new TypeError('No fetch implementation is available. Pass one as `fetch` in the Bridge config.');
+    }
+    let request: TransportRequest = {
       url: absolute,
       method: 'GET',
       headers: { ...(await baseHeaders()), accept: '*/*', 'x-request-id': randomId() },
       credentials: config.credentials,
       signal: new AbortController().signal,
     };
+    for (const interceptor of interceptors.request.items) {
+      request = (await interceptor(request, { operation: undefined, attempt: 1 })) ?? request;
+    }
+    if (originOf(request.url) !== originOf(absolute)) {
+      throw new TypeError('A request interceptor changed the request to another origin; Bridge will not send it.');
+    }
     if (withCredentials && auth !== undefined) await auth.prepare(request);
     const linked = linkSignal(options.signal, options.timeout ?? defaultTimeout);
     const errorContext: ErrorContext = { requestId: request.headers['x-request-id'] };
@@ -563,15 +623,17 @@ export function createBridge<C extends Contract = UntypedContract>(config: Bridg
     try {
       const init: RequestInit = { method: 'GET', headers: request.headers, signal: linked.signal, redirect: 'manual' };
       if (request.credentials !== undefined) init.credentials = request.credentials;
-      response = await doFetch(absolute, init);
-      if (wasRedirected(response, absolute)) throw redirectError(errorContext, response.status);
+      response = await doFetch(request.url, init);
+      if (wasRedirected(response, request.url)) throw redirectError(errorContext, response.status);
       if (withCredentials && auth?.handleResponse !== undefined) await auth.handleResponse(response, request);
       if (!response.ok) {
         throw errorFromResponse(response.status, parseJson(await response.text()), { headers: response.headers });
       }
     } catch (cause) {
+      const error = failureError(cause, options.signal, linked, errorContext);
+      linked.abort();
       linked.dispose();
-      throw failureError(cause, options.signal, linked, errorContext);
+      throw error;
     }
     // The signal stays linked until the body has been read.
     return holdUntilConsumed(response, linked, options.signal, errorContext, options.onDownloadProgress);
@@ -580,6 +642,8 @@ export function createBridge<C extends Contract = UntypedContract>(config: Bridg
   function currentTenant(): string | null {
     const value = typeof config.tenant === 'function' ? config.tenant() : config.tenant;
     if (value !== null && typeof value === 'object') {
+      // The promise is dropped here; keep a rejection from going unhandled.
+      Promise.resolve(value).catch(() => undefined);
       throw new TypeError(
         'The tenant function is async, so the tenant is not known synchronously. Pass `scope` explicitly.',
       );

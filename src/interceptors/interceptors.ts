@@ -41,8 +41,13 @@ export function interceptorList<T>(initial: readonly T[] = []): InterceptorList<
   return {
     use(interceptor) {
       items = [...items, interceptor];
+      let removed = false;
       return () => {
-        items = items.filter((item) => item !== interceptor);
+        // Removes this registration only: the same function added twice stays once.
+        if (removed) return;
+        removed = true;
+        const index = items.lastIndexOf(interceptor);
+        if (index !== -1) items = [...items.slice(0, index), ...items.slice(index + 1)];
       };
     },
     get items() {
